@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -e
+set -u
+
+Usage () { cat >&2 <<EOF
+Usage: $0 [OPTIONS] GROUP [...]
+Show commands to recreate a group
+Options:
+  --skip-users          skip useradd's for members
+EOF
+}
+
+
+opt_skip_users=no
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --)
+      shift
+      break
+      ;;
+    --skip-users)
+      opt_skip_users=yes
+      shift
+      ;;
+    -h|--help)
+      Usage
+      exit 1
+      ;;
+    -*)
+      echo >&2 "Error: unexpected option: $1"
+      Usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ $# -lt 1 ]
+then
+  Usage
+  exit 1
+fi
+
+for group in "$@"
+do
+  grent=$(getent group "$group" || echo MISSING $?)
+  if [ "$grent" = 'MISSING 2' ]
+  then
+    echo >&2 "Error: Unknown group: $group"
+    exit 2
+  fi
+  IFS=: read -r name x number memberlist <<<"$grent"
+  printf 'groupadd -g %d %q\n' "$number" "$name"
+  if [ "$opt_skip_users" = 'no' -a -n "$memberlist" ]
+  then
+    mapfile -t members < <( tr , \\012 <<<"$memberlist" | sort -u )
+    for member in "${members[@]}"
+    do
+      printf 'usermod -a -G %q %q\n' "$name" "$member"
+    done
+  fi
+done
+
+# vim: set ts=2 sw=2 :

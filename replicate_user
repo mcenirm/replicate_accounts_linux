@@ -1,0 +1,64 @@
+#!/bin/bash
+
+set -e
+set -u
+
+Usage () { cat >&2 <<EOF
+Usage: $0 [OPTIONS] USER [...]
+Show commands to recreate a user
+Options:
+  -m, --create-home             create the user's home directory
+EOF
+}
+
+
+replicate_group=${0%_user}_group
+
+opt_create_home=--no-create-home
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --)
+      shift
+      break
+      ;;
+    -m|--create-home)
+      opt_create_home=--create-home
+      shift
+      ;;
+    -h|--help)
+      Usage
+      exit 1
+      ;;
+    -*)
+      echo >&2 "Error: unexpected option: $1"
+      Usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ $# -lt 1 ]
+then
+  Usage
+  exit 1
+fi
+
+for user in "$@"
+do
+  pwent=$(getent passwd "$user" || echo MISSING $?)
+  if [ "$pwent" = 'MISSING 2' ]
+  then
+    echo >&2 "Error: Unknown user: $user"
+    exit 2
+  fi
+  IFS=: read -r name x number gid gecos home shell <<<"$pwent"
+  "$replicate_group" --skip-users "$gid"
+  printf 'useradd %q -u %d -g %d -c %q -d %q -s %q %q\n' "$opt_create_home" "$number" "$gid" "$gecos" "$home" "$shell" "$name"
+done
+
+# vim: set ts=2 sw=2 :
